@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Cx.Admin.Api</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Cx.Infrastructure\Cx.Infrastructure.csproj" />
+    <ProjectReference Include="..\Cx.Integrations.Podium\Cx.Integrations.Podium.csproj" />
+  </ItemGroup>
+</Project>

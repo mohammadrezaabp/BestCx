@@ -1,0 +1,56 @@
+# OpenTelemetry Collector for the CX platform (spec 30).
+# Point the app at it with CX_Otel__Endpoint=http://otel-collector:4317
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 5s
+    send_batch_size: 1024
+
+  memory_limiter:
+    check_interval: 2s
+    limit_percentage: 80
+    spike_limit_percentage: 20
+
+  # Customer identifiers must never become high-cardinality metric labels (spec 30).
+  # They stay on spans, where they are searchable, and are stripped from metrics.
+  attributes/scrub-metrics:
+    actions:
+      - key: cx.customer_id
+        action: delete
+      - key: cx.event_id
+        action: delete
+      - key: cx.call_id
+        action: delete
+
+exporters:
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    resource_to_telemetry_conversion:
+      enabled: false
+
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [debug]
+
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, attributes/scrub-metrics, batch]
+      exporters: [prometheus]
+
+  telemetry:
+    logs:
+      level: info

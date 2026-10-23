@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Cx.Integrations.Podium</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Cx.Infrastructure\Cx.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>
