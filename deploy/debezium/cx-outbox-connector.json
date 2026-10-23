@@ -1,0 +1,69 @@
+{
+  "//": [
+    "Debezium outbox event router (technical design 5.3, spec 11).",
+    "",
+    "The bundled stack publishes cx_outbox with the in-process relay, which keeps the",
+    "single image self-contained. This connector is the production alternative: it reads",
+    "the WAL instead of polling, so publication survives an application outage and adds",
+    "no read load to PostgreSQL.",
+    "",
+    "Register it against a Kafka Connect cluster:",
+    "  curl -X POST http://connect:8083/connectors -H 'Content-Type: application/json' \\",
+    "       -d @deploy/debezium/cx-outbox-connector.json",
+    "",
+    "Then set CX_OutboxRelay__Enabled=false so the two do not both publish."
+  ],
+
+  "name": "cx-outbox-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "tasks.max": "1",
+
+    "database.hostname": "postgres",
+    "database.port": "5432",
+    "database.user": "${file:/opt/secrets/cx.properties:db_user}",
+    "database.password": "${file:/opt/secrets/cx.properties:db_password}",
+    "database.dbname": "cx",
+    "topic.prefix": "cx",
+
+    "plugin.name": "pgoutput",
+    "slot.name": "cx_outbox_slot",
+    "publication.name": "cx_outbox_publication",
+    "publication.autocreate.mode": "filtered",
+
+    "table.include.list": "public.cx_outbox",
+    "tombstones.on.delete": "false",
+    "heartbeat.interval.ms": "10000",
+
+    "transforms": "outbox",
+    "transforms.outbox.type": "io.debezium.transforms.outbox.EventRouter",
+
+    "transforms.outbox.table.field.event.id": "id",
+    "transforms.outbox.table.field.event.key": "partition_key",
+    "transforms.outbox.table.field.event.type": "event_type",
+    "transforms.outbox.table.field.event.payload": "payload",
+    "transforms.outbox.table.field.event.timestamp": "created_at",
+
+    "//route": "aggregate_type is cx_event, so every row routes to cx.persisted.events.v1",
+    "transforms.outbox.route.by.field": "aggregate_type",
+    "transforms.outbox.route.topic.replacement": "cx.persisted.events.v1",
+
+    "//headers": "aggregate_id travels as a header for tracing and replay tooling",
+    "transforms.outbox.table.fields.additional.placement": "aggregate_id:header:aggregate_id,aggregate_type:header:aggregate_type",
+
+    "key.converter": "org.apache.kafka.connect.storage.StringConverter",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter.schemas.enable": "false",
+
+    "//dlq": "an unroutable change goes to a dead letter topic instead of stalling the connector",
+    "errors.tolerance": "all",
+    "errors.deadletterqueue.topic.name": "cx.persistence.dlq.v1",
+    "errors.deadletterqueue.topic.replication.factor": "1",
+    "errors.deadletterqueue.context.headers.enable": "true",
+    "errors.log.enable": "true",
+
+    "snapshot.mode": "no_data",
+    "producer.override.acks": "all",
+    "producer.override.enable.idempotence": "true"
+  }
+}

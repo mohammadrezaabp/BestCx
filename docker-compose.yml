@@ -1,0 +1,141 @@
+name: bestcx
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: cx
+      POSTGRES_USER: cx
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run python scripts/setup.py first}
+      POSTGRES_INITDB_ARGS: --data-checksums
+    command: [postgres, -c, wal_level=logical, -c, max_replication_slots=4, -c, max_wal_senders=4]
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-25432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U cx -d cx]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    environment:
+      CLUSTER_ID: fx5KLJs9Tl-KFixNbo8KGw
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:${KAFKA_PORT:-39092}
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_RETENTION_HOURS: 168
+    ports:
+      - "127.0.0.1:${KAFKA_PORT:-39092}:29092"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: [CMD-SHELL, "kafka-topics --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?Run python scripts/setup.py first}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?Run python scripts/setup.py first}
+    ports:
+      - "127.0.0.1:${MINIO_PORT:-29000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-29001}:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: [CMD-SHELL, "curl -fsS http://localhost:9000/minio/health/live || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+
+  cx-platform:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: bestcx/platform:local
+    depends_on:
+      postgres: {condition: service_healthy}
+      kafka: {condition: service_healthy}
+      minio: {condition: service_healthy}
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      CX_ROLES: ${CX_ROLES:-all}
+      CX_Database__ConnectionString: "Host=postgres;Port=5432;Database=cx;Username=cx;Password=${POSTGRES_PASSWORD:?Run setup first}"
+      CX_Kafka__BootstrapServers: kafka:9092
+      CX_Messaging__Provider: kafka
+      CX_ObjectStorage__ServiceUrl: http://minio:9000
+      CX_ObjectStorage__PublicServiceUrl: http://localhost:${MINIO_PORT:-29000}
+      CX_ObjectStorage__AccessKey: ${MINIO_ACCESS_KEY:?Run setup first}
+      CX_ObjectStorage__SecretKey: ${MINIO_SECRET_KEY:?Run setup first}
+      CX_ObjectStorage__Bucket: cx-voice
+      CX_Ai__Enabled: ${CX_AI_ENABLED:-true}
+      CX_Ai__ApiKey: ${OPENROUTER_API_KEY:-}
+      CX_Ai__Model: ${CX_AI_MODEL:-deepseek/deepseek-v4.1-flash}
+      CX_Ai__FallbackModel: ${CX_AI_FALLBACK_MODEL:-deepseek/deepseek-v4.1-flash}
+      CX_Ai__DecisionModel: ${CX_AI_DECISION_MODEL:-typesafe/jev-1.13}
+      CX_Ai__DecisionFallbackModel: ${CX_AI_DECISION_FALLBACK_MODEL:-deepseek/deepseek-v4-flash}
+      CX_Voice__Stt__Engine: ${CX_STT_ENGINE:-openrouter}
+      CX_Voice__Stt__Model: ${CX_STT_MODEL:-google/gemini-3.1-flash-lite}
+      CX_Voice__Stt__DeepgramApiKey: ${DEEPGRAM_API_KEY:-}
+      CX_Ingestion__Environment: docker
+      CX_CustomerPortal__Enabled: ${CX_CUSTOMER_PORTAL_ENABLED:-true}
+      CX_CustomerPortal__TenantId: bestcx
+      CX_Auth__Mode: login
+      CX_Auth__Users__0__Username: ${CX_ADMIN_USERNAME:-admin}
+      CX_Auth__Users__0__Password: ${CX_ADMIN_PASSWORD:?Run python scripts/setup.py first}
+      CX_Auth__Users__0__DisplayName: ${CX_ADMIN_DISPLAY_NAME:-Administrator}
+      CX_Auth__Users__0__TenantId: bestcx
+      CX_Auth__Users__0__Roles__0: admin
+      CX_MockData__Enabled: "false"
+    ports:
+      - "127.0.0.1:${CX_PORT:-18080}:8080"
+    healthcheck:
+      test: [CMD, curl, -fsS, http://localhost:8080/health/live]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+
+  customer-portal:
+    build:
+      context: .
+      dockerfile: src/Cx.CustomerPortal/Dockerfile
+    image: bestcx/customer-portal:local
+    depends_on:
+      cx-platform: {condition: service_healthy}
+    ports:
+      - "127.0.0.1:${CX_CUSTOMER_PORTAL_PORT:-18081}:8081"
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+
+volumes:
+  postgres-data:
+  kafka-data:
+  minio-data:

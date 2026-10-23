@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://connector.example.invalid/cx/schemas/canonical-event.v1.schema.json",
+  "title": "Canonical CX Event v1",
+  "type": "object",
+  "required": [
+    "event_id",
+    "schema_version",
+    "event_name",
+    "event_category",
+    "occurred_at",
+    "tenant_id",
+    "source"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "event_id": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "schema_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+$" },
+    "event_name": { "type": "string", "minLength": 3, "maxLength": 160, "pattern": "^[a-z_]+(\\.[a-z_]+){1,3}$" },
+    "event_category": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "received_at": { "type": ["string", "null"], "format": "date-time" },
+    "tenant_id": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "customer": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": { "type": ["string", "null"], "maxLength": 128 },
+        "anonymous_id": { "type": ["string", "null"], "maxLength": 128 },
+        "business_id": { "type": ["string", "null"], "maxLength": 128 }
+      }
+    },
+    "session": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "session_id": { "type": ["string", "null"], "maxLength": 128 }
+      }
+    },
+    "source": {
+      "type": "object",
+      "required": ["type", "service"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "service": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "channel": { "type": ["string", "null"], "maxLength": 64 },
+        "environment": { "type": ["string", "null"], "maxLength": 32 }
+      }
+    },
+    "product": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "product_id": { "type": ["string", "null"], "maxLength": 128 },
+        "service_id": { "type": ["string", "null"], "maxLength": 128 }
+      }
+    },
+    "interaction": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "properties": {
+        "action": { "type": ["string", "null"], "maxLength": 64 },
+        "result": { "type": ["string", "null"], "maxLength": 64 },
+        "duration_ms": { "type": ["integer", "null"], "minimum": 0 },
+        "error_code": { "type": ["string", "null"], "maxLength": 128 }
+      }
+    },
+    "voice": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "properties": {
+        "call_id": { "type": ["string", "null"], "maxLength": 128 },
+        "recording_id": { "type": ["string", "null"], "maxLength": 128 },
+        "direction": { "type": ["string", "null"], "enum": ["inbound", "outbound", "internal", null] },
+        "agent_id": { "type": ["string", "null"], "maxLength": 128 },
+        "queue_id": { "type": ["string", "null"], "maxLength": 128 },
+        "duration_ms": { "type": ["integer", "null"], "minimum": 0 },
+        "end_reason": { "type": ["string", "null"], "maxLength": 64 },
+        "provider": { "type": ["string", "null"], "maxLength": 64 },
+        "provider_call_id": { "type": ["string", "null"], "maxLength": 128 }
+      }
+    },
+    "context": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "trace_id": { "type": ["string", "null"], "maxLength": 64 },
+        "span_id": { "type": ["string", "null"], "maxLength": 32 },
+        "request_id": { "type": ["string", "null"], "maxLength": 128 },
+        "correlation_id": { "type": ["string", "null"], "maxLength": 128 }
+      }
+    },
+    "privacy": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "contains_pii": { "type": ["boolean", "null"] },
+        "classification": { "type": ["string", "null"], "enum": ["public", "internal", "confidential", "restricted", null] }
+      }
+    },
+    "metadata": { "type": ["object", "null"] }
+  }
+}

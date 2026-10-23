@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Cx.ContractTests</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="coverlet.collector" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Cx.Ingestion.Api\Cx.Ingestion.Api.csproj" />
+    <ProjectReference Include="..\..\src\Cx.Integrations.Support\Cx.Integrations.Support.csproj" />
+    <ProjectReference Include="..\..\src\Cx.Integrations.Voip\Cx.Integrations.Voip.csproj" />
+  </ItemGroup>
+</Project>

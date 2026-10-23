@@ -1,0 +1,14 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /src/Cx.Web
+    schedule: {interval: monthly}
+  - package-ecosystem: npm
+    directory: /src/Cx.CustomerPortal
+    schedule: {interval: monthly}
+  - package-ecosystem: nuget
+    directory: /
+    schedule: {interval: monthly}
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: {interval: monthly}

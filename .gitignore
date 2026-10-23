@@ -1,0 +1,41 @@
+# Build outputs
+bin/
+obj/
+node_modules/
+dist/
+*.tsbuildinfo
+TestResults/
+test-results/
+playwright-report/
+*.user
+
+# Secrets and machine-specific configuration
+.env
+.env.*
+!.env.example
+*.local.json
+appsettings.Local.json
+appsettings.*.local.json
+secrets/
+credentials/
+*.pem
+*.key
+*.pfx
+*.p12
+*.jks
+*.keystore
+*.sqlite
+*.sqlite3
+*.db
+*.dump
+*.bak
+*.log
+
+# Editors and local tooling
+.vs/
+.vscode/
+.idea/
+__pycache__/
+.DS_Store
+Thumbs.db
+src/Cx.Web/tests/*.png
