@@ -169,8 +169,10 @@ public sealed class S3ObjectStorage : IObjectStorage, IDisposable
         try
         {
             var response = await _client.GetObjectMetadataAsync(_options.Bucket, key, ct);
+            var lastModified = (DateTime?)response.LastModified
+                ?? throw new InvalidDataException("Object metadata is missing its last-modified timestamp.");
             return new ObjectStat(key, response.ContentLength, response.Headers.ContentType,
-                new DateTimeOffset(response.LastModified.ToUniversalTime(), TimeSpan.Zero));
+                new DateTimeOffset(lastModified.ToUniversalTime(), TimeSpan.Zero));
         }
         catch (AmazonS3Exception ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
         {

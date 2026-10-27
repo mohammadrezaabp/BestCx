@@ -48,7 +48,7 @@ public class CaseRoutingTests
         var chat = new FakeChat("fake") { Content = $$"""{"team_id":"{{Technical}}","workflow_id":null,"reason":"Software error checking"}""" };
         var route = await Router(decisions, chat).DecideAsync(new() { Description = "Payment error", Topic = "payment" }, Teams(), [], CancellationToken.None);
         route.Model.Should().Be("fallback-model"); route.WorkflowId.Should().BeNull();
-        decisions.Request!.Questions["workflow"].Criteria!.AsObject().Should().NotContainKey(Flow.ToString());
+        decisions.Request!.Questions["workflow"].Criteria!.AsObject().ContainsKey(Flow.ToString()).Should().BeFalse();
         chat.Request!.JsonSchemaName.Should().Be(CaseRouter.SchemaName);
     }
 
