@@ -43,6 +43,9 @@ jobs:
   interfaces:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    container:
+      image: mcr.microsoft.com/playwright:v1.63.0-noble
+      options: --ipc=host
     strategy:
       fail-fast: false
       matrix:
@@ -60,7 +63,7 @@ jobs:
       - run: npm ci
       - run: npm audit --audit-level=moderate
       - run: npm run build
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --only-shell chromium
       - run: npm test
   containers:
     runs-on: ubuntu-latest
