@@ -84,7 +84,9 @@ npx playwright install chromium
 npm test
 ```
 
-The customer portal has the same npm build and test commands. Database-dependent tests use disposable PostgreSQL containers; end-to-end tests may also require Kafka. Never point tests at a production database.
+The customer portal has the same npm build and test commands. Database-dependent tests use disposable PostgreSQL containers. Never point tests at a production database.
+
+CI also builds the Docker images and runs every end-to-end test against PostgreSQL, Kafka, and object storage. Reproduce that check with `python scripts/ci-stack.py` on a machine with Docker and the .NET SDK. It requires a fresh workspace with no `.env` or existing BestCx Compose resources, generates temporary credentials, and removes its containers and volumes afterward. CI fails if any test is skipped. MinIO is built from its pinned original source because its community container images are no longer publicly distributed.
 
 After application code changes:
 

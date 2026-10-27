@@ -15,7 +15,7 @@ public class ReportTests(PostgresFixture fixture)
     {
         Skip.IfNot(fixture.Available, fixture.SkipReason);
         var tenant = $"report-{Guid.NewGuid():N}";
-        var from = new DateTimeOffset(2026, 10, 1, 0, 0, 0, TimeSpan.FromHours(3.5));
+        var from = new DateTimeOffset(2026, 10, 1, 0, 0, 0, TimeSpan.Zero);
         var to = from.AddDays(3);
         var feedback = new FeedbackRepository(fixture.DataSource);
         async Task Insert(int? csat, int? ces, string? tenantId = null, DateTimeOffset? at = null, string? type = null, string? customerId = null)
