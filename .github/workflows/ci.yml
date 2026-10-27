@@ -1,5 +1,11 @@
 name: CI
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
@@ -18,17 +24,27 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   server:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CX_TEST_REQUIRE_DEPENDENCIES: "true"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
         with:
           global-json-file: global.json
-      - run: dotnet test tests/Cx.UnitTests/Cx.UnitTests.csproj -c Release
-      - run: dotnet test tests/Cx.ContractTests/Cx.ContractTests.csproj -c Release
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - run: dotnet test tests/Cx.UnitTests/Cx.UnitTests.csproj -c Release --logger trx --results-directory artifacts/unit
+      - run: dotnet test tests/Cx.ContractTests/Cx.ContractTests.csproj -c Release --logger trx --results-directory artifacts/contract
+      - run: dotnet test tests/Cx.IntegrationTests/Cx.IntegrationTests.csproj -c Release --logger trx --results-directory artifacts/integration
+      - run: python scripts/check-test-results.py artifacts
       - run: dotnet publish src/Cx.Host/Cx.Host.csproj -c Release -o /tmp/bestcx-publish
   interfaces:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     strategy:
+      fail-fast: false
       matrix:
         project: [Cx.Web, Cx.CustomerPortal]
     defaults:
@@ -46,3 +62,16 @@ jobs:
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: npm test
+  containers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [release-policy, server, interfaces]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
+        with:
+          global-json-file: global.json
+      - run: python scripts/ci-stack.py
