@@ -264,6 +264,9 @@ public sealed partial class OperationsStore(CxDataSource dataSource, TimeProvide
             item.ResolvedAt ??= now; item.FirstResolvedAt ??= now; item.FirstResponseAt ??= now;
             if (input.Status == "closed") item.ClosedAt ??= now;
         }
+        // The note belongs to the team and stage completing the work, before the handoff.
+        if (!string.IsNullOrWhiteSpace(input.Comment))
+            await ActivityAsync(db, tx, tenant, id, actor, "message", input.Comment.Trim(), false, now, ct);
         await db.ExecuteAsync(new CommandDefinition("""
             UPDATE cx_case SET status=@status,team_id=@team,assignee_id=@assignee,problem_id=@problem,
               priority=@Priority,sla_policy_id=@SlaPolicyId,sla_calendar=@SlaCalendarJson::jsonb,response_minutes=@ResponseMinutes,resolution_minutes=@ResolutionMinutes,
@@ -290,8 +293,6 @@ public sealed partial class OperationsStore(CxDataSource dataSource, TimeProvide
         if (changes.Length > 0)
             await ActivityAsync(db, tx, tenant, id, actor, "updated", Json(new { from = previousStatus, to = input.Status,
                 team = input.TeamId, assignee = input.AssigneeId, changes }), false, now, ct);
-        if (!string.IsNullOrWhiteSpace(input.Comment))
-            await ActivityAsync(db, tx, tenant, id, actor, "message", input.Comment.Trim(), false, now, ct);
         if (workflowChange is not null)
         {
             await db.ExecuteAsync(new CommandDefinition("""
