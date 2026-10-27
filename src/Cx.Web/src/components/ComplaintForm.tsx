@@ -12,7 +12,7 @@ export default function ComplaintForm({ onSaved, onCancel }: { onSaved: () => vo
   const [childCode, setChildCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
-  const request = useRef<{ signature: string; id: string }>();
+  const request = useRef<{ signature: string; id: string } | undefined>(undefined);
   // Prune inactive branches exactly as the server does.
   const byId = new Map(topics.options.map(option => [option.topic.id, option.topic]));
   const active = topics.options.filter(({ topic }) => {
