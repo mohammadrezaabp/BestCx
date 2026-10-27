@@ -181,8 +181,13 @@ public class CustomerPortalEndToEndTests(StackFixture stack)
         rejected.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         using var blockedLogin = await client.PostAsJsonAsync("/v1/portal/auth/login", new { username, password = "reset-password123" });
         blockedLogin.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        using var staffIdentity = await staff.GetAsync("/v1/auth/me");
+        staffIdentity.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var identity = JsonDocument.Parse(await staffIdentity.Content.ReadAsStringAsync());
+        var passwordLoginEnabled = identity.RootElement.GetProperty("mode").GetString() == "login";
         using var staffLogin = await client.PostAsJsonAsync("/v1/auth/login", new { username, password = "reset-password123" });
-        staffLogin.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        // API-key deployments deliberately return 404 for staff password login.
+        staffLogin.StatusCode.Should().Be(passwordLoginEnabled ? HttpStatusCode.Unauthorized : HttpStatusCode.NotFound);
     }
 
     [SkippableTheory]
