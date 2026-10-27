@@ -53,6 +53,8 @@ public sealed class StackFixture : IAsyncLifetime
             Available = false;
             SkipReason = $"CX platform is not reachable at {baseUrl}: {ex.Message}";
         }
+        if (!Available && Environment.GetEnvironmentVariable("CX_TEST_REQUIRE_DEPENDENCIES") == "true")
+            throw new InvalidOperationException(SkipReason);
     }
 
     public Task DisposeAsync()
