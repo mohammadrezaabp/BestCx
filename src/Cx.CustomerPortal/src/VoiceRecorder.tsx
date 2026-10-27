@@ -26,7 +26,7 @@ export default function VoiceRecorder({
   const [error, setError] = useState("");
   const [preview, setPreview] = useState<string | null>(null);
   const recorder = useRef<MediaRecorder | null>(null);
-  const timer = useRef<number>();
+  const timer = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     if (!value) return setPreview(null);
