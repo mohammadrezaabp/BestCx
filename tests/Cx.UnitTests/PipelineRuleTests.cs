@@ -246,7 +246,7 @@ public class NormalizationTests
         var normalized = Normalizer.Normalize(evt, receivedAt);
 
         normalized.OccurredAt.Should().BeCloseTo(receivedAt, TimeSpan.FromSeconds(1));
-        normalized.Metadata.Should().ContainKey("_original_occurred_at");
+        normalized.Metadata.ContainsKey("_original_occurred_at").Should().BeTrue();
     }
 
     [Fact]
