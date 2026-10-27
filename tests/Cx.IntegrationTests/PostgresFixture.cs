@@ -68,6 +68,8 @@ public sealed class PostgresFixture : IAsyncLifetime
             // sandbox. Skipping with a reason beats a red suite that says nothing.
             Available = false;
             SkipReason = $"PostgreSQL is unavailable for integration tests: {ex.Message}";
+            if (Environment.GetEnvironmentVariable("CX_TEST_REQUIRE_DEPENDENCIES") == "true")
+                throw new InvalidOperationException(SkipReason, ex);
         }
     }
 

@@ -1,5 +1,6 @@
 using Cx.Application.Operations;
 using Cx.Application.Options;
+using Cx.Application.Query;
 using Cx.Domain.Entities;
 using Cx.Infrastructure.Database.Repositories;
 using Cx.Infrastructure.Operations;
@@ -15,9 +16,10 @@ namespace Cx.IntegrationTests;
 public class OperationsTests(PostgresFixture fixture)
 {
     private readonly CancellationToken ct = CancellationToken.None;
+    private readonly Dictionary<string, ManualClock> clocks = [];
     private sealed class ManualClock : TimeProvider
     {
-        public DateTimeOffset Now { get; set; } = new(2026, 10, 12, 10, 0, 0, TimeSpan.FromHours(3.5));
+        public DateTimeOffset Now { get; set; } = new(2026, 10, 12, 10, 0, 0, TimeSpan.Zero);
         public override DateTimeOffset GetUtcNow() => Now.ToUniversalTime();
     }
     private async Task<(string Tenant, OperationsStore Store, ManualClock Clock)> Setup()
@@ -25,6 +27,7 @@ public class OperationsTests(PostgresFixture fixture)
         Skip.IfNot(fixture.Available, fixture.SkipReason);
         var tenant = $"ops-{Guid.NewGuid():N}";
         var clock = new ManualClock();
+        clocks[tenant] = clock;
         await using var db = await fixture.DataSource.OpenAsync(ct);
         foreach (var customer in new[] { "customer", "other" }) await db.ExecuteAsync("""
             INSERT INTO customer_identity(id,tenant_id,customer_id,display_name,first_seen_at,last_seen_at)
@@ -39,8 +42,11 @@ public class OperationsTests(PostgresFixture fixture)
         await users.SaveStaffAsync(tenant, "test", new(user, user.ToString("N"), "Agent", role, "password-for-test"), ct);
         return user;
     }
-    private Task<Guid> Create(OperationsStore store, string tenant, Guid? feedback = null, Guid? assignee = null, Guid? team = null) =>
-        store.CreateAsync(tenant, "test", new(Guid.NewGuid(), "customer", "Payment tracking", "Description of the request", AssigneeId: assignee, TeamId: team, FeedbackId: feedback), ct);
+    private async Task<Guid> Create(OperationsStore store, string tenant, Guid? feedback = null, Guid? assignee = null, Guid? team = null)
+    {
+        feedback ??= await Feedback(tenant, clocks[tenant].Now);
+        return await store.CreateAsync(tenant, "test", new(Guid.NewGuid(), "customer", "Payment tracking", "Description of the request", AssigneeId: assignee, TeamId: team, FeedbackId: feedback), ct);
+    }
     private static UpdateCaseInput Update(WorkCase item, string status, string resolution = "") =>
         new(item.Version, status, item.TeamId, item.AssigneeId, item.ProblemId, resolution);
     private async Task<Guid> Feedback(string tenant, DateTimeOffset at, string kind = "complaint", int? csat = null)
@@ -90,14 +96,17 @@ public class OperationsTests(PostgresFixture fixture)
         clock.Now = clock.Now.AddMinutes(20);
         await store.HandleWorkflowAsync(tenant, "accountant", id, new(item.Version, "close", "The money was returned to the customer’s account"), accountant, false, null, ct);
         var detail = (await store.DetailAsync(tenant, id, null, ct))!;
-        detail.Case.Status.Should().Be("closed"); detail.Case.ResolutionText.Should().Contain("Returned");
+        detail.Case.Status.Should().Be("resolved"); detail.Case.ResolutionText.Should().Contain("returned");
         detail.Case.FirstResolvedAt.Should().NotBeNull();
         detail.Activities.Count(activity => activity.Kind == "workflow").Should().Be(3);
-        detail.Activities.Single(activity => activity.Text.Contains("The technical problem was fixed")).TeamId.Should().Be(technical);
+        var handoff = detail.Activities.Single(activity => activity.Text.Contains("The technical problem was fixed"));
+        handoff.TeamId.Should().Be(technical); handoff.StageTitle.Should().Be("Technical review");
         detail.Activities.Single(activity => activity.Text == "The log was checked").StageTitle.Should().Be("Technical review");
         var customerView = (await store.DetailAsync(tenant, id, "customer", ct))!;
         customerView.Activities.Should().NotContain(activity => activity.Kind == "workflow" || activity.Text == "The log was checked");
         (await store.InvitationsAsync(tenant, "customer", ct)).Should().ContainSingle();
+        await store.CustomerActionAsync(tenant, "customer", id, new(detail.Case.Version, "confirm", null), ct);
+        (await store.DetailAsync(tenant, id, null, ct))!.Case.Status.Should().Be("closed");
     }
 
     [SkippableFact]
@@ -206,7 +215,12 @@ public class OperationsTests(PostgresFixture fixture)
         (await db.ExecuteScalarAsync<int>("SELECT count(*) FROM cx_event WHERE tenant_id=@tenant AND event_id=@event", new { tenant, @event = $"survey-{invitation.Id:N}" })).Should().Be(1);
         (await db.ExecuteScalarAsync<int>("SELECT count(*) FROM cx_outbox WHERE aggregate_id=@event", new { @event = $"survey-{invitation.Id:N}" })).Should().Be(1);
         var report = await store.OutcomesAsync(tenant, clock.Now.AddDays(-1), clock.Now.AddDays(1), ct);
-        report.Summary.AftercareCsat.Should().Be(100); report.Summary.AftercareResponses.Should().Be(1);
+        report.Summary.AftercareCsat.Should().BeNull(); report.Summary.AftercareResponses.Should().Be(0);
+        var experience = await new ReportRepository(fixture.DataSource).GetAsync(new ReportQuery
+        {
+            TenantId = tenant, From = clock.Now.AddDays(-1), To = clock.Now.AddDays(1), Inbox = "feedback"
+        }, ct);
+        experience.Summary.CsatPercent.Should().Be(100); experience.Summary.CsatResponses.Should().Be(1);
     }
     [SkippableFact]
     public async Task Team_ownership_last_admin_protection_and_tenant_scoping_are_enforced()
@@ -240,7 +254,8 @@ public class OperationsTests(PostgresFixture fixture)
         var (tenant, store, clock) = await Setup(); clock.Now = DateTimeOffset.UtcNow;
         var rule = new RuleInput(Guid.NewGuid(), "Automatic tracking", null, null, null, 1, "high", null, null, Enabled: true);
         await store.SaveRuleAsync(tenant, "test", rule, ct);
-        var feedback = await Feedback(tenant, clock.Now, "generic");
+        var feedback = await Feedback(tenant, clock.Now);
+        await Feedback(tenant, clock.Now, "generic");
         await store.TickAsync(ct, tenant); await store.TickAsync(ct, tenant);
         await using var db = await fixture.DataSource.OpenAsync(ct);
         (await db.ExecuteScalarAsync<int>("SELECT count(*) FROM cx_automation_execution WHERE tenant_id=@tenant AND feedback_id=@feedback", new { tenant, feedback })).Should().Be(1);
@@ -321,7 +336,7 @@ public class OperationsTests(PostgresFixture fixture)
     {
         var (tenant, store, clock) = await Setup(); clock.Now = DateTimeOffset.UtcNow;
         await store.SaveRuleAsync(tenant, "test", new(Guid.NewGuid(), "Follow-up", null, null, null, 1, "high", null, null, Enabled: true), ct);
-        var feedback = await Feedback(tenant, clock.Now, "generic");
+        var feedback = await Feedback(tenant, clock.Now);
         var id = await store.CreateAsync(tenant, "automation", new(Guid.NewGuid(), "customer", "Follow-up", "Description", FeedbackId: feedback), ct);
         var item = (await store.DetailAsync(tenant, id, null, ct))!.Case;
         await store.UpdateAsync(tenant, "human-agent", id, Update(item, "new") with { Priority="critical" }, ct);
