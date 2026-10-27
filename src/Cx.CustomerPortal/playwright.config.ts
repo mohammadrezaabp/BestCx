@@ -4,6 +4,7 @@ export default defineConfig({
   timeout: 30000,
   workers: 2,
   fullyParallel: true,
+  forbidOnly: !!process.env.CI,
   use: {
     baseURL: "http://127.0.0.1:5174",
     channel: process.env.PW_CHANNEL || undefined,
@@ -23,6 +24,6 @@ export default defineConfig({
   webServer: {
     command: "node node_modules/vite/bin/vite.js --host 127.0.0.1",
     url: "http://127.0.0.1:5174",
-    reuseExistingServer: true,
+    reuseExistingServer: !process.env.CI,
   },
 });

@@ -2786,6 +2786,7 @@ form.grid-filters > .grid-search { flex: 1 1 280px; width: auto; }
   .main:has(> .overview-dashboard) { padding: 12px 16px 8px; }
   .overview-dashboard .page-head { gap: 6px; }
   .overview-dashboard .card { padding: 8px; }
+  .overview-dashboard .trend-chart { height: 72px; }
   .overview-dashboard .metric-grid > .metric { padding: 8px; }
   .overview-experience, .overview-insights { gap: 8px; }
   .overview-experience .section-head { flex-direction: column; align-items: start; gap: 2px; margin-bottom: 4px; }
