@@ -22,7 +22,7 @@ export default function VoiceInput({
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const recorder = useRef<MediaRecorder | null>(null);
-  const timer = useRef<number>();
+  const timer = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     if (!value) return setPreview(null);

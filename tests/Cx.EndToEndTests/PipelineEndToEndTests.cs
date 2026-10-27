@@ -178,7 +178,12 @@ public class PipelineEndToEndTests
 
         // persisted event -> inbox projection -> Customer 360 timeline
         var timeline = await _stack.WaitForAsync($"/v1/customers/{customerId}/timeline",
-            json => json.GetProperty("items").GetArrayLength() > 0);
+            json =>
+            {
+                var projectedKinds = json.GetProperty("items").EnumerateArray()
+                    .Select(item => item.GetProperty("kind").GetString()).ToHashSet();
+                return projectedKinds.Contains("event") && projectedKinds.Contains("support");
+            });
 
         timeline.Should().NotBeNull("the timeline must merge the persisted event");
 
