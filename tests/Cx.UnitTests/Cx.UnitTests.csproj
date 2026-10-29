@@ -16,6 +16,7 @@
     <ProjectReference Include="..\..\src\Cx.Infrastructure\Cx.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Cx.Ingestion.Api\Cx.Ingestion.Api.csproj" />
     <ProjectReference Include="..\..\src\Cx.Integrations.Support\Cx.Integrations.Support.csproj" />
+    <ProjectReference Include="..\..\src\Cx.Integrations.Voip\Cx.Integrations.Voip.csproj" />
     <ProjectReference Include="..\..\src\Cx.Persistence.Worker\Cx.Persistence.Worker.csproj" />
   </ItemGroup>
 </Project>

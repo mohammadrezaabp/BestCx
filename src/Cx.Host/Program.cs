@@ -54,7 +54,9 @@ builder.Services.Configure<CustomerPortalOptions>(builder.Configuration.GetSecti
 builder.Services.Configure<OutboxRelayOptions>(builder.Configuration.GetSection(OutboxRelayOptions.Section));
 builder.Services.Configure<VoipOptions>(builder.Configuration.GetSection(VoipOptions.Section));
 
-builder.Services.AddHttpClient<IVoipConnector, HttpVoipConnector>();
+// The connector follows redirects itself so every hop is checked against the trusted hosts.
+builder.Services.AddHttpClient<IVoipConnector, HttpVoipConnector>()
+    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });
 builder.Services.AddScoped<RecordingIngestService>();
 
 builder.Services.AddHostedService<StartupTasks>();

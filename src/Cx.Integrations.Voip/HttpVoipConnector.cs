@@ -20,8 +20,8 @@ public sealed class VoipOptions
     public int TimeoutSeconds { get; set; } = 300;
 
     /// <summary>
-    /// Hosts a recording may be fetched from. Empty means "any host the event points at",
-    /// which is only safe in a trusted network - set this in production.
+    /// Hosts an event-supplied recording URL may point at, besides the host of BaseUrl.
+    /// A URL on any other host is refused, so an empty list with no BaseUrl fetches nothing.
     /// </summary>
     public List<string> AllowedRecordingHosts { get; set; } = new();
 
@@ -37,9 +37,16 @@ public sealed class VoipOptions
 /// storage: a two-hour call is never materialized in memory.
 /// Concrete providers differ in routes and auth, so both are configuration. A provider
 /// with a proprietary SDK gets its own IVoipConnector; nothing else changes.
+///
+/// A recording URL comes from an event, so it is attacker-influenced input in the worst
+/// case: every hop must be on a trusted host, redirects are followed here rather than by
+/// the handler (the client is registered with AllowAutoRedirect off), and the provider
+/// credentials go on the first hop only, never in the client's default headers.
 /// </summary>
 public sealed class HttpVoipConnector : IVoipConnector
 {
+    private const int MaxRedirects = 5;
+
     private readonly HttpClient _http;
     private readonly VoipOptions _options;
     private readonly ILogger<HttpVoipConnector> _logger;
@@ -53,21 +60,6 @@ public sealed class HttpVoipConnector : IVoipConnector
 
         if (!string.IsNullOrWhiteSpace(_options.BaseUrl))
             _http.BaseAddress = new Uri(_options.BaseUrl.TrimEnd('/') + "/");
-
-        switch (_options.AuthMode.ToLowerInvariant())
-        {
-            case "bearer" when !string.IsNullOrWhiteSpace(_options.ApiKey):
-                _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _options.ApiKey);
-                break;
-            case "apikey" when !string.IsNullOrWhiteSpace(_options.ApiKey):
-                _http.DefaultRequestHeaders.TryAddWithoutValidation("X-Api-Key", _options.ApiKey);
-                break;
-            case "basic" when !string.IsNullOrWhiteSpace(_options.BasicUsername):
-                var raw = $"{_options.BasicUsername}:{_options.BasicPassword}";
-                _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic",
-                    Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(raw)));
-                break;
-        }
     }
 
     public string Provider => _options.Provider;
@@ -79,7 +71,9 @@ public sealed class HttpVoipConnector : IVoipConnector
 
         try
         {
-            using var response = await _http.GetAsync(string.Empty, HttpCompletionOption.ResponseHeadersRead, ct);
+            var request = new HttpRequestMessage(HttpMethod.Get, _http.BaseAddress);
+            Authorize(request);
+            using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
             return new ConnectorHealth(true, $"HTTP {(int)response.StatusCode}");
         }
         catch (Exception ex)
@@ -104,8 +98,27 @@ public sealed class HttpVoipConnector : IVoipConnector
         CancellationToken ct = default)
     {
         var uri = ResolveUri(recording);
+        HttpResponseMessage response;
 
-        var response = await _http.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, ct);
+        for (var hop = 0; ; hop++)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Get, uri);
+            // Credentials belong to the first hop only, as the platform handler would do.
+            if (hop == 0) Authorize(request);
+            response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+
+            if ((int)response.StatusCode is not (301 or 302 or 303 or 307 or 308) ||
+                response.Headers.Location is not { } location)
+                break;
+
+            response.Dispose();
+            if (hop >= MaxRedirects)
+                throw new CxException(ErrorCategory.PermanentProvider,
+                    $"recording {recording.RecordingId} redirected more than {MaxRedirects} times");
+
+            uri = location.IsAbsoluteUri ? location : new Uri(uri, location);
+            EnsureFetchable(uri);
+        }
 
         if (!response.IsSuccessStatusCode)
         {
@@ -132,19 +145,7 @@ public sealed class HttpVoipConnector : IVoipConnector
         if (!string.IsNullOrWhiteSpace(recording.SourceUri) &&
             Uri.TryCreate(recording.SourceUri, UriKind.Absolute, out var absolute))
         {
-            // An event-supplied URL is attacker-influenced input in the worst case, so it is
-            // checked against the allowlist before the worker fetches it.
-            if (_options.AllowedRecordingHosts.Count > 0 &&
-                !_options.AllowedRecordingHosts.Contains(absolute.Host, StringComparer.OrdinalIgnoreCase))
-            {
-                throw new CxException(ErrorCategory.Validation,
-                    $"recording host '{absolute.Host}' is not in Voip:AllowedRecordingHosts");
-            }
-
-            if (absolute.Scheme is not ("http" or "https"))
-                throw new CxException(ErrorCategory.Validation,
-                    $"unsupported recording URI scheme '{absolute.Scheme}'");
-
+            EnsureFetchable(absolute);
             return absolute;
         }
 
@@ -157,5 +158,38 @@ public sealed class HttpVoipConnector : IVoipConnector
             .Replace("{recordingId}", Uri.EscapeDataString(recording.RecordingId), StringComparison.Ordinal);
 
         return new Uri(_http.BaseAddress, route);
+    }
+
+    /// <summary>Refuses a scheme other than HTTP(S) and any host that is not the provider's or allowlisted.</summary>
+    private void EnsureFetchable(Uri uri)
+    {
+        if (uri.Scheme is not ("http" or "https"))
+            throw new CxException(ErrorCategory.Validation,
+                $"unsupported recording URI scheme '{uri.Scheme}'");
+
+        var trusted = (_http.BaseAddress is not null &&
+                       uri.Host.Equals(_http.BaseAddress.Host, StringComparison.OrdinalIgnoreCase)) ||
+                      _options.AllowedRecordingHosts.Contains(uri.Host, StringComparer.OrdinalIgnoreCase);
+        if (!trusted)
+            throw new CxException(ErrorCategory.Validation,
+                $"recording host '{uri.Host}' is neither the Voip:BaseUrl host nor in Voip:AllowedRecordingHosts");
+    }
+
+    private void Authorize(HttpRequestMessage request)
+    {
+        switch (_options.AuthMode.ToLowerInvariant())
+        {
+            case "bearer" when !string.IsNullOrWhiteSpace(_options.ApiKey):
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.ApiKey);
+                break;
+            case "apikey" when !string.IsNullOrWhiteSpace(_options.ApiKey):
+                request.Headers.TryAddWithoutValidation("X-Api-Key", _options.ApiKey);
+                break;
+            case "basic" when !string.IsNullOrWhiteSpace(_options.BasicUsername):
+                var raw = $"{_options.BasicUsername}:{_options.BasicPassword}";
+                request.Headers.Authorization = new AuthenticationHeaderValue("Basic",
+                    Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(raw)));
+                break;
+        }
     }
 }

@@ -181,6 +181,10 @@ To start ingest Sound, file address in metadata Send:
 }
 ```
 
+The URL host must be the `Voip:BaseUrl` host or listed in `Voip:AllowedRecordingHosts`;
+any other host is refused, and so is a redirect to one. Provider credentials are sent on
+the first request only.
+
 No `recording_url` None fetchIt is not done; The file can be opened with
 `POST /v1/voice/recordings` Upload directly.
 
